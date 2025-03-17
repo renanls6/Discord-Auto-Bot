@@ -1,132 +1,106 @@
-
-
 import json
 import time
-import shareithub
 import os
 import random
 import requests
+import logging
 from dotenv import load_dotenv
 from datetime import datetime
-from shareithub import shareithub
+from typing import Optional, Dict
 
-# Inicializando o Shareithub e carregando as variáveis de ambiente
-shareithub()
+# Configuração de logging para salvar os logs em um arquivo, com mensagens em português
+logging.basicConfig(filename="bot.log", level=logging.INFO, format="%(asctime)s - %(message)s")
+
+# Carregar variáveis de ambiente
 load_dotenv()
 
-# Carregar o token do Discord
+# Carregar o token do Discord e chave da API do Google
 discord_token = os.getenv('DISCORD_TOKEN')
-if not discord_token:
-    print("Erro: O token do Discord não foi encontrado ou está incorreto.")
-    exit(1)  # Finalizar o script, pois o token é essencial para a autenticação
-
-# Carregar a chave da API do Google
 google_api_key = os.getenv('GOOGLE_API_KEY')
-if not google_api_key:
-    print("Erro: A chave da API do Google não foi encontrada ou está incorreta.")
-    exit(1)  # Finalizar o script, pois a chave da API do Google é essencial para a comunicação com o Google AI
 
-last_message_id = None
-bot_user_id = None
-last_ai_response = None  # Armazenar a última resposta da IA
+if not discord_token or not google_api_key:
+    logging.error("Erro: Token do Discord ou chave da API do Google não encontrados.")
+    exit(1)
 
-def log_message(message):
-    print(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {message}")
+# Configurações de reintento e tempos de espera
+RETRY_LIMIT = 3
+RETRY_DELAY = 5  # segundos entre tentativas
+READ_DELAY = 5  # segundos entre leituras de mensagens
+REPLY_DELAY = 3  # segundos entre respostas
 
-def generate_reply(prompt, use_google_ai=True, use_file_reply=False, language="id"):
-    """Gera uma resposta, evitando duplicação ao usar o Google Gemini AI"""
+last_message_id: Optional[str] = None
+bot_user_id: Optional[str] = None
+last_ai_response: Optional[str] = None  # Armazenar a última resposta da IA
 
-    global last_ai_response  # Usar a variável global para ser acessada em toda a sessão
+# Função para logar mensagens no arquivo de log
+def log_message(message: str) -> None:
+    """Função para logar mensagens em português no arquivo de log"""
+    logging.info(message)
 
-    if use_file_reply:
-        log_message("💬 Usando mensagem do arquivo como resposta.")
-        return {"candidates": [{"content": {"parts": [{"text": get_random_message()}]}}]}
+def safe_request(func, *args, **kwargs):
+    """Função auxiliar para fazer requisições de forma segura, com reintento em caso de falha"""
+    for attempt in range(RETRY_LIMIT):
+        try:
+            return func(*args, **kwargs)
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            log_message(f"⚠️ Erro na requisição ({attempt + 1}/{RETRY_LIMIT}): {e}. Tentando novamente...")
+            time.sleep(RETRY_DELAY)
+        except requests.exceptions.RequestException as e:
+            log_message(f"⚠️ Erro na requisição ({attempt + 1}/{RETRY_LIMIT}): {e}. Abortando após falha.")
+            raise  # Aborta após o número máximo de tentativas
+    log_message("⚠️ Erro na requisição, sem mais tentativas.")
+    raise Exception("Falha ao realizar requisição após múltiplas tentativas.")
 
-    if use_google_ai:
-        # Escolha de idioma
-        if language == "en":
-            ai_prompt = f"{prompt}\n\nResponda de forma descontraída, jovem e simpática, como se fosse uma conversa de amigo. Não use símbolos ou palavras complicadas, só fale de forma natural, como alguém que ama bater papo e está sempre disposto a ajudar."
-        else:
-            ai_prompt = f"{prompt}\n\nResponda de forma descontraída, jovem e simpática, como se fosse uma conversa de amigo. Não use símbolos ou palavras complicadas, só fale de forma natural, como alguém que ama bater papo e está sempre disposto a ajudar."
+def generate_reply(user_message: str, language: str = "en") -> str:
+    """Gera uma resposta curta e amigável usando a API do Google Gemini AI"""
+    global last_ai_response
 
-        url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={google_api_key}'
-        headers = {'Content-Type': 'application/json'}
-        data = {'contents': [{'parts': [{'text': ai_prompt}]}]}
+    ai_prompt = f"{user_message}\n\nRespond like a 25-year-old native English speaker, chill, sociable, and friendly. Keep the reply short, simple, and positive. Always try to help, like you're chatting with a friend."
 
-        for attempt in range(3):  # Tentar até 3 vezes se a IA repetir a mesma mensagem
-            try:
-                response = requests.post(url, headers=headers, json=data)
-                response.raise_for_status()
-                ai_response = response.json()
+    url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={google_api_key}'
+    headers = {'Content-Type': 'application/json'}
+    data = {'contents': [{'parts': [{'text': ai_prompt}]}]}
 
-                # Obter o texto da resposta da IA
-                response_text = ai_response['candidates'][0]['content']['parts'][0]['text']
-
-                # Verificar se a resposta da IA é a mesma que a última
-                if response_text == last_ai_response:
-                    log_message("⚠️ IA deu a mesma resposta, tentando novamente...")
-                    continue  # Tentar novamente com uma nova solicitação
-                
-                last_ai_response = response_text  # Salvar a última resposta
-                return ai_response
-
-            except requests.exceptions.RequestException as e:
-                log_message(f"⚠️ Falha na requisição: {e}")
-                return None
-
-        log_message("⚠️ A IA continua dando a mesma resposta, usando a última resposta disponível.")
-        return {"candidates": [{"content": {"parts": [{"text": last_ai_response or 'Desculpe, não posso responder agora, mas tô aqui pra ajudar!'}]}}]}
-
-    else:
-        return {"candidates": [{"content": {"parts": [{"text": get_random_message()}]}}]}
-
-def get_random_message():
-    """Obter uma mensagem aleatória do arquivo de mensagens"""
     try:
-        with open('pesan.txt', 'r') as file:
-            lines = file.readlines()
-            if lines:
-                return random.choice(lines).strip()
-            else:
-                log_message("O arquivo 'pesan.txt' está vazio.")
-                return "Não há mensagens disponíveis."
-    except FileNotFoundError:
-        log_message("Arquivo 'pesan.txt' não encontrado.")
-        return "Arquivo 'pesan.txt' não encontrado."
+        response = safe_request(requests.post, url, headers=headers, json=data)
+        ai_response = response.json()
 
-def send_message(channel_id, message_text, reply_to=None, reply_mode=True):
-    """Enviar mensagem para o Discord, pode ser com ou sem resposta"""
-    headers = {
-        'Authorization': f'{discord_token}',
-        'Content-Type': 'application/json'
-    }
+        response_text = ai_response['candidates'][0]['content']['parts'][0]['text']
+        if not response_text.strip() or response_text == last_ai_response:
+            log_message("⚠️ A resposta gerada é vazia ou igual à última. Tentando novamente.")
+            return "Sorry, I can't think of anything right now, but I'm here to help!"
+        
+        last_ai_response = response_text.strip()
+        return response_text.strip()
 
+    except requests.exceptions.RequestException as e:
+        log_message(f"⚠️ Erro ao gerar resposta da IA: {e}")
+        return "Sorry, I couldn't get a good response. Can I help with anything else?"
+    except Exception as e:
+        log_message(f"⚠️ Erro ao processar a resposta: {e}")
+        return "Something went wrong. Please try again later."
+
+def send_message(channel_id: str, message_text: str, reply_to: Optional[str] = None) -> None:
+    """Função para enviar mensagem ao Discord de forma simplificada"""
     payload = {'content': message_text}
-
-    # Somente adicionar resposta se o modo de resposta estiver ativado
-    if reply_mode and reply_to:
+    if reply_to:
         payload['message_reference'] = {'message_id': reply_to}
 
     try:
-        response = requests.post(f"https://discord.com/api/v9/channels/{channel_id}/messages", json=payload, headers=headers)
-        response.raise_for_status()
+        safe_request(requests.post, f"https://discord.com/api/v9/channels/{channel_id}/messages", 
+                     json=payload, headers={'Authorization': discord_token, 'Content-Type': 'application/json'})
+        log_message(f"✅ Mensagem enviada: {message_text}")
+    except Exception as e:
+        log_message(f"⚠️ Falha ao enviar mensagem: {e}")
 
-        if response.status_code == 201:
-            log_message(f"✅ Mensagem enviada: {message_text}")
-        else:
-            log_message(f"⚠️ Falha ao enviar mensagem: {response.status_code}")
-    except requests.exceptions.RequestException as e:
-        log_message(f"⚠️ Erro na requisição: {e}")
-
-def auto_reply(channel_id, read_delay, reply_delay, use_google_ai, use_file_reply, language, reply_mode):
-    """Função para resposta automática no Discord, evitando duplicação de respostas da IA"""
+def auto_reply(channel_id: str, read_delay: int = READ_DELAY, reply_delay: int = REPLY_DELAY) -> None:
+    """Função para responder automaticamente às mensagens no Discord, com verificação de duplicação"""
     global last_message_id, bot_user_id
 
-    headers = {'Authorization': f'{discord_token}'}
+    headers = {'Authorization': discord_token}
 
     try:
-        bot_info_response = requests.get('https://discord.com/api/v9/users/@me', headers=headers)
-        bot_info_response.raise_for_status()
+        bot_info_response = safe_request(requests.get, 'https://discord.com/api/v9/users/@me', headers=headers)
         bot_user_id = bot_info_response.json().get('id')
     except requests.exceptions.RequestException as e:
         log_message(f"⚠️ Falha ao obter informações do bot: {e}")
@@ -134,8 +108,7 @@ def auto_reply(channel_id, read_delay, reply_delay, use_google_ai, use_file_repl
 
     while True:
         try:
-            response = requests.get(f'https://discord.com/api/v9/channels/{channel_id}/messages', headers=headers)
-            response.raise_for_status()
+            response = safe_request(requests.get, f'https://discord.com/api/v9/channels/{channel_id}/messages', headers=headers)
 
             if response.status_code == 200:
                 messages = response.json()
@@ -149,49 +122,29 @@ def auto_reply(channel_id, read_delay, reply_delay, use_google_ai, use_file_repl
                         user_message = most_recent_message.get('content', '')
                         log_message(f"💬 Mensagem recebida: {user_message}")
 
-                        result = generate_reply(user_message, use_google_ai, use_file_reply, language)
-                        response_text = result['candidates'][0]['content']['parts'][0]['text'] if result else "Desculpe, não posso responder."
+                        response_text = generate_reply(user_message)
 
                         log_message(f"⏳ Esperando {reply_delay} segundos antes de responder...")
                         time.sleep(reply_delay)
-                        send_message(channel_id, response_text, reply_to=message_id if reply_mode else None, reply_mode=reply_mode)
+                        send_message(channel_id, response_text, reply_to=message_id)
                         last_message_id = message_id
 
             log_message(f"⏳ Esperando {read_delay} segundos antes de verificar novas mensagens...")
             time.sleep(read_delay)
+
         except requests.exceptions.RequestException as e:
             log_message(f"⚠️ Erro na requisição: {e}")
             time.sleep(read_delay)
 
 if __name__ == "__main__":
-    use_reply = input("Deseja usar a funcionalidade de resposta automática? (y/n): ").lower() == 'y'
-    channel_id = input("Digite o ID do canal: ")
+    use_reply = input("Do you want to use auto-reply? (y/n): ").lower() == 'y'
+    channel_id = input("Enter the channel ID: ")
 
     if use_reply:
-        use_google_ai = input("Usar o Google Gemini AI para respostas? (y/n): ").lower() == 'y'
-        use_file_reply = input("Usar mensagens do arquivo 'pesan.txt'? (y/n): ").lower() == 'y'
-        reply_mode = input("Deseja responder às mensagens (reply) ou enviar apenas uma mensagem? (reply/send): ").lower() == 'reply'
-        language_choice = input("Escolha o idioma para a resposta (id/en): ").lower()
+        read_delay = int(input("Set the read delay (in seconds): "))
+        reply_delay = int(input("Set the reply delay (in seconds): "))
 
-        if language_choice not in ["id", "en"]:
-            log_message("⚠️ Idioma inválido, usando o idioma indonésio por padrão.")
-            language_choice = "id"
-
-        read_delay = int(input("Defina o intervalo para ler mensagens novas (em segundos): "))
-        reply_delay = int(input("Defina o intervalo para responder às mensagens (em segundos): "))
-
-        log_message(f"✅ Modo de resposta {'ativo' if reply_mode else 'não-reply'} em {'Indonésio' if language_choice == 'id' else 'Inglês'}...")
-        auto_reply(channel_id, read_delay, reply_delay, use_google_ai, use_file_reply, language_choice, reply_mode)
-
+        log_message(f"✅ Auto-reply mode active... Waiting for messages in channel {channel_id}")
+        auto_reply(channel_id, read_delay, reply_delay)
     else:
-        send_interval = int(input("Defina o intervalo para enviar mensagens (em segundos): "))
-        log_message("✅ Modo de envio de mensagens aleatórias ativo...")
-
-        while True:
-            message_text = get_random_message()
-            send_message(channel_id, message_text, reply_mode=False)
-            log_message(f"⏳ Esperando {send_interval} segundos antes de enviar a próxima mensagem...")
-            time.sleep(send_interval)
-
-
-
+        log_message("❌ Auto-reply mode is off.")
