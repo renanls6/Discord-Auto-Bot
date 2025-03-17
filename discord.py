@@ -13,6 +13,19 @@ load_dotenv()
 discord_token = os.getenv('DISCORD_TOKEN')
 google_api_key = os.getenv('GOOGLE_API_KEY')
 
+# Defina como False para não exibir o banner
+mostrar_banner = False  
+
+if mostrar_banner:
+    print("""
+    ███████╗██╗  ██╗ █████╗ ██████╗ ███████╗    ██╗████████╗    ██╗  ██╗██╗   ██╗██████╗ 
+    ██╔════╝██║  ██║██╔══██╗██╔══██╗██╔════╝    ██║╚══██╔══╝    ██║  ██║██║   ██║██╔══██╗
+    ███████╗███████║███████║██████╔╝█████╗      ██║   ██║       ███████║██║   ██║██████╔╝
+    ╚════██║██╔══██║██╔══██║██╔══██╗██╔══╝      ██║   ██║       ██╔══██║██║   ██║██╔══██╗
+    ███████║██║  ██║██║  ██║██║  ██║███████╗    ██║   ██║       ██║  ██║╚██████╔╝██████╔╝
+    ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝    ╚═╝   ╚═╝       ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ 
+    """)
+
 # Inicializando o Shareithub e imprimindo o banner
 shareithub()
 
