@@ -32,6 +32,9 @@ last_message_id: Optional[str] = None
 bot_user_id: Optional[str] = None
 last_ai_response: Optional[str] = None  # Armazenar a última resposta da IA
 
+# Definindo uma variável para respostas curtas e informais
+short_and_informal = True  # Mude para False se quiser respostas mais formais
+
 banner = """
  ██████╗ ██╗  ██╗    ██████╗ ███████╗███╗   ██╗ █████╗ ███╗   ██╗
 ██╔═████╗╚██╗██╔╝    ██╔══██╗██╔════╝████╗  ██║██╔══██╗████╗  ██║
@@ -66,6 +69,9 @@ def generate_reply(user_message: str, language: str = "en") -> str:
     global last_ai_response
 
     ai_prompt = f"{user_message}\n\nRespond like a 25-year-old native English speaker, chill, sociable, and friendly. Keep the reply short, simple, and positive. Always try to help, like you're chatting with a friend."
+
+    if short_and_informal:  # Se a opção for verdadeira, vai manter a resposta mais informal e curta
+        ai_prompt += "\nKeep the reply even shorter and more casual. Use informal language and avoid being too formal or overly polite."
 
     url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={google_api_key}'
     headers = {'Content-Type': 'application/json'}
@@ -147,14 +153,16 @@ def auto_reply(channel_id: str, read_delay: int = READ_DELAY, reply_delay: int =
             time.sleep(read_delay)
 
 if __name__ == "__main__":
-    use_reply = input("Do you want to use auto-reply? (y/n): ").lower() == 'y'
-    channel_id = input("Enter the channel ID: ")
-
+    print("Bem-vindo ao bot de auto-resposta do Discord!")
+    use_reply = input("Você deseja ativar a resposta automática? (s/n): ").lower() == 's'
+    
     if use_reply:
-        read_delay = int(input("Set the read delay (in seconds): "))
-        reply_delay = int(input("Set the reply delay (in seconds): "))
+        print("\nConfigurações de Resposta Automática:")
+        channel_id = input("Digite o ID do canal (ex: 123456789012345678): ")
+        read_delay = int(input("Defina o intervalo de leitura (em segundos): "))
+        reply_delay = int(input("Defina o intervalo de resposta (em segundos): "))
 
-        log_message(f"✅ Auto-reply mode active... Waiting for messages in channel {channel_id}")
+        log_message(f"✅ Modo de resposta automática ativado... Aguardando mensagens no canal {channel_id}")
         auto_reply(channel_id, read_delay, reply_delay)
     else:
-        log_message("❌ Auto-reply mode is off.")
+        log_message("❌ Modo de resposta automática desativado.")
