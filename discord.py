@@ -32,6 +32,17 @@ last_message_id: Optional[str] = None
 bot_user_id: Optional[str] = None
 last_ai_response: Optional[str] = None  # Armazenar a última resposta da IA
 
+
+banner = """
+ ██████╗ ██╗  ██╗    ██████╗ ███████╗███╗   ██╗ █████╗ ███╗   ██╗
+██╔═████╗╚██╗██╔╝    ██╔══██╗██╔════╝████╗  ██║██╔══██╗████╗  ██║
+██║██╔██║ ╚███╔╝     ██████╔╝█████╗  ██╔██╗ ██║███████║██╔██╗ ██║
+████╔╝██║ ██╔██╗     ██╔══██╗██╔══╝  ██║╚██╗██║██╔══██║██║╚██╗██║
+╚██████╔╝██╔╝ ██╗    ██║  ██║███████╗██║ ╚████║██║  ██║██║ ╚████║
+ ╚═════╝ ╚═╝  ╚═╝    ╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═══╝
+"""
+print(banner)
+
 # Função para logar mensagens no arquivo de log
 def log_message(message: str) -> None:
     """Função para logar mensagens em português no arquivo de log"""
