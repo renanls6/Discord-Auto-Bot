@@ -25,9 +25,9 @@ if not discord_token or not google_api_key:
 
 # Configurações de reintento e tempos de espera
 RETRY_LIMIT = 3
-RETRY_DELAY = 5  # segundos entre tentativas
-READ_DELAY = 5  # segundos entre leituras de mensagens
-REPLY_DELAY = 3  # segundos entre respostas
+RETRY_DELAY = 2  # segundos entre tentativas
+READ_DELAY = 2  # segundos entre leituras de mensagens
+REPLY_DELAY = 1  # segundos entre respostas
 
 last_message_id: Optional[str] = None
 bot_user_id: Optional[str] = None
@@ -74,7 +74,7 @@ def generate_reply(user_message: str) -> str:
     normalized_message = user_message.strip().lower()
 
     # Respostas para diferentes situações
-    if re.search(r'\b(need|help|assist)\b', normalized_message):
+    if "help" in normalized_message or "assist" in normalized_message:
         # Respostas quando o usuário está pedindo ajuda
         response_text = random.choice([
             "Ayy, I gotchu! What do you need help with?",
@@ -83,7 +83,7 @@ def generate_reply(user_message: str) -> str:
             "Lemme know what you need, I'm all ears."
         ])
     
-    elif re.search(r'\b(sad|down|feeling)\b', normalized_message):
+    elif "sad" in normalized_message or "down" in normalized_message or "feeling" in normalized_message:
         # Respostas quando o usuário parece estar triste ou chateado
         response_text = random.choice([
             "Yo, I feel you. Sometimes we all need a little space.",
@@ -92,7 +92,7 @@ def generate_reply(user_message: str) -> str:
             "It’s okay to feel down sometimes, but you’re not alone."
         ])
     
-    elif re.search(r'\b(happy|good|great)\b', normalized_message):
+    elif "happy" in normalized_message or "good" in normalized_message or "great" in normalized_message:
         # Respostas quando o usuário está feliz ou empolgado
         response_text = random.choice([
             "Ayy, that's awesome! Keep that energy going!",
@@ -109,8 +109,8 @@ def generate_reply(user_message: str) -> str:
 
 def should_reply(user_message: str) -> bool:
     """Decide se o bot deve responder com base no conteúdo da mensagem"""
-    # O bot agora responde 60% das vezes
-    return random.random() < 0.60  # 60% de chance de responder
+    # O bot agora responde 80% das vezes
+    return random.random() < 0.80  # 80% de chance de responder
 
 def send_message(channel_id: str, message_text: str, reply_to: Optional[str] = None) -> None:
     """Função para enviar mensagem ao Discord de forma simplificada"""
