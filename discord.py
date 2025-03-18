@@ -67,13 +67,14 @@ def safe_request(func, *args, **kwargs):
         raise  # Aborta após falha
 
 def generate_reply(user_message: str, language: str = "en") -> str:
-    """Gera uma resposta curta e amigável usando a API do Google Gemini AI"""
+    """Gera uma resposta curta e amigável usando a API do Google Gemini AI com base no novo estilo de resposta em inglês"""
     global last_ai_response
 
-    ai_prompt = f"{user_message}\n\nRespond in a very casual, short, and natural way. Don't be formal, just keep it chill."
+    # Novo prompt com base no estilo desejado (em inglês)
+    ai_prompt = f"{user_message}\n\nBased on this context, respond like a laid-back introverted American teenager. Use casual, informal language, slang, abbreviations, and avoid punctuation (since humans rarely talk with proper punctuation)."
 
-    # Adicionando gírias e uma abordagem mais informal
-    ai_prompt += "\nUse slang like 'yo', 'dude', 'aight', 'nah', and keep it relaxed. No need for perfect grammar."
+    # Adicionando gírias e uma abordagem mais informal em inglês
+    ai_prompt += "\nUse slang like 'yo', 'dude', 'lit', 'sick', 'nah', 'bet', 'fr', 'aight', 'fam' and stuff like that. Don’t worry about perfect grammar or punctuation, just keep it chill like texting your friend."
 
     url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={google_api_key}'
     headers = {'Content-Type': 'application/json'}
@@ -86,17 +87,18 @@ def generate_reply(user_message: str, language: str = "en") -> str:
         response_text = ai_response['candidates'][0]['content']['parts'][0]['text']
         if not response_text.strip() or response_text == last_ai_response:
             log_message("⚠️ A resposta gerada é vazia ou igual à última. Tentando novamente.")
-            return "Yo, I can't think of anything right now, but I'm here if you need something."
-        
+            return "yo i got nuthin atm but hit me up if u need anything"
+
         last_ai_response = response_text.strip()
         return response_text.strip()
 
     except requests.exceptions.RequestException as e:
         log_message(f"⚠️ Erro ao gerar resposta da IA: {e}")
-        return "Sorry, I couldn't get a good reply, but I can help with something else."
+        return "yo idk what happened but i cant come up with a response rn, lemme know if u need anything else"
+
     except Exception as e:
         log_message(f"⚠️ Erro ao processar a resposta: {e}")
-        return "Something went wrong. Try again later."
+        return "yo somethin went wrong, try again later"
 
 def should_reply(user_message: str) -> bool:
     """Decide se o bot deve responder com base no conteúdo da mensagem"""
@@ -125,9 +127,16 @@ def send_message(channel_id: str, message_text: str, reply_to: Optional[str] = N
     except Exception as e:
         log_message(f"⚠️ Falha ao enviar mensagem: {e}")
 
-def auto_reply(channels: list, read_delay: int = READ_DELAY, reply_delay: int = REPLY_DELAY) -> None:
+def auto_reply(read_delay: int = READ_DELAY, reply_delay: int = REPLY_DELAY) -> None:
     """Função para responder automaticamente às mensagens nos canais do Discord"""
     global last_message_id, bot_user_id
+
+    # Carregar os canais do arquivo .env
+    channels = os.getenv('DISCORD_CHANNELS', '').split(',')
+
+    if not channels:
+        log_message("⚠️ Nenhum canal encontrado. Verifique as variáveis de ambiente.")
+        return
 
     headers = {'Authorization': discord_token}
 
@@ -162,7 +171,7 @@ def auto_reply(channels: list, read_delay: int = READ_DELAY, reply_delay: int = 
                         if should_reply(user_message):
                             response_text = generate_reply(user_message)
                         else:
-                            response_text = "Nah, I'm just chillin' right now. Lemme know if you need something."
+                            response_text = "nah, i'm just chillin' right now. lemme know if u need something"
 
                         print(f"⏳ Respondendo: {response_text}")  # Exibe no console a resposta gerada
                         log_message(f"⏳ Respondendo: {response_text}")
@@ -175,16 +184,8 @@ def auto_reply(channels: list, read_delay: int = READ_DELAY, reply_delay: int = 
             time.sleep(read_delay)  # Aguarda um tempo antes de verificar novas mensagens
 
 def main():
-    channels = [
-        "channel_id_1",  # Substitua pelos IDs dos canais
-        "channel_id_2",  # Substitua pelos IDs dos canais
-        "channel_id_3",  # Substitua pelos IDs dos canais
-        "channel_id_4",  # Substitua pelos IDs dos canais
-        "channel_id_5",  # Substitua pelos IDs dos canais
-    ]
-
     # Inicia a função de resposta automática
-    auto_reply(channels)
+    auto_reply()
 
 if __name__ == '__main__':
     main()
