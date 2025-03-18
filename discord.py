@@ -1,14 +1,15 @@
 import json
 import time
 import os
-import random
 import requests
 import logging
 from dotenv import load_dotenv
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Optional
+import random
+from backoff import on_exception, expo
 
-# Configuração de logging para salvar os logs em um arquivo, com mensagens em português
+# Configuração de logging
 logging.basicConfig(filename="bot.log", level=logging.INFO, format="%(asctime)s - %(message)s")
 
 # Carregar variáveis de ambiente
@@ -50,28 +51,26 @@ def log_message(message: str) -> None:
     """Função para logar mensagens em português no arquivo de log"""
     logging.info(message)
 
+@on_exception(expo, requests.exceptions.RequestException, max_tries=5)
 def safe_request(func, *args, **kwargs):
-    """Função auxiliar para fazer requisições de forma segura, com reintento em caso de falha"""
-    for attempt in range(RETRY_LIMIT):
-        try:
-            return func(*args, **kwargs)
-        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
-            log_message(f"⚠️ Erro na requisição ({attempt + 1}/{RETRY_LIMIT}): {e}. Tentando novamente...")
-            time.sleep(RETRY_DELAY)
-        except requests.exceptions.RequestException as e:
-            log_message(f"⚠️ Erro na requisição ({attempt + 1}/{RETRY_LIMIT}): {e}. Abortando após falha.")
-            raise  # Aborta após o número máximo de tentativas
-    log_message("⚠️ Erro na requisição, sem mais tentativas.")
-    raise Exception("Falha ao realizar requisição após múltiplas tentativas.")
+    """Função auxiliar para fazer requisições de forma segura, com backoff exponencial"""
+    try:
+        return func(*args, **kwargs)
+    except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+        log_message(f"⚠️ Erro na requisição: {e}. Tentando novamente...")
+        raise
+    except requests.exceptions.RequestException as e:
+        log_message(f"⚠️ Erro na requisição: {e}. Abortando após falha.")
+        raise  # Aborta após falha
 
 def generate_reply(user_message: str, language: str = "en") -> str:
     """Gera uma resposta curta e amigável usando a API do Google Gemini AI"""
     global last_ai_response
 
-    ai_prompt = f"{user_message}\n\nRespond like a 25-year-old native English speaker, chill, sociable, and friendly. Keep the reply short, simple, and positive. Always try to help, like you're chatting with a friend."
+    ai_prompt = f"{user_message}\n\nRespond in a very casual, short, and natural way. Don't be formal or long-winded. Just give a simple, friendly reply."
 
-    if short_and_informal:  # Se a opção for verdadeira, vai manter a resposta mais informal e curta
-        ai_prompt += "\nKeep the reply even shorter and more casual. Use informal language and avoid being too formal or overly polite."
+    if short_and_informal:
+        ai_prompt += "\nKeep it super short, no need for any formality, just casual responses."
 
     url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={google_api_key}'
     headers = {'Content-Type': 'application/json'}
@@ -106,6 +105,7 @@ def send_message(channel_id: str, message_text: str, reply_to: Optional[str] = N
         safe_request(requests.post, f"https://discord.com/api/v9/channels/{channel_id}/messages", 
                      json=payload, headers={'Authorization': discord_token, 'Content-Type': 'application/json'})
         log_message(f"✅ Mensagem enviada: {message_text}")
+        print(f"✅ Mensagem enviada: {message_text}")  # Exibe no console a resposta enviada
     except Exception as e:
         log_message(f"⚠️ Falha ao enviar mensagem: {e}")
 
@@ -124,6 +124,7 @@ def auto_reply(channel_id: str, read_delay: int = READ_DELAY, reply_delay: int =
 
     while True:
         try:
+            print("⏳ Lendo novas mensagens...")
             response = safe_request(requests.get, f'https://discord.com/api/v9/channels/{channel_id}/messages', headers=headers)
 
             if response.status_code == 200:
@@ -134,18 +135,22 @@ def auto_reply(channel_id: str, read_delay: int = READ_DELAY, reply_delay: int =
                     author_id = most_recent_message.get('author', {}).get('id')
                     message_type = most_recent_message.get('type', '')
 
+                    # Apenas responder a mensagens que não são do bot
                     if (last_message_id is None or int(message_id) > int(last_message_id)) and author_id != bot_user_id and message_type != 8:
                         user_message = most_recent_message.get('content', '')
+                        print(f"💬 Mensagem recebida: {user_message}")  # Exibe no console a mensagem recebida
                         log_message(f"💬 Mensagem recebida: {user_message}")
 
                         response_text = generate_reply(user_message)
 
-                        log_message(f"⏳ Esperando {reply_delay} segundos antes de responder...")
+                        print(f"⏳ Respondendo: {response_text}")  # Exibe no console a resposta gerada
+                        log_message(f"⏳ Respondendo: {response_text}")
+                        
                         time.sleep(reply_delay)
                         send_message(channel_id, response_text, reply_to=message_id)
                         last_message_id = message_id
 
-            log_message(f"⏳ Esperando {read_delay} segundos antes de verificar novas mensagens...")
+            print(f"⏳ Esperando {read_delay} segundos antes de verificar novas mensagens...")
             time.sleep(read_delay)
 
         except requests.exceptions.RequestException as e:
