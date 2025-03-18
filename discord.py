@@ -39,6 +39,7 @@ slangs = [
     "for real", "nah", "aight", "you know", "lol", "totally", "sick"
 ]
 
+# Banner de boas-vindas
 banner = """
  ██████╗ ██╗  ██╗    ██████╗ ███████╗███╗   ██╗ █████╗ ███╗   ██╗
 ██╔═████╗╚██╗██╔╝    ██╔══██╗██╔════╝████╗  ██║██╔══██╗████╗  ██║
@@ -48,8 +49,7 @@ banner = """
  ╚═════╝ ╚═╝  ╚═╝    ╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝╚═╝  ╚═╝╚═╝  ╚═══╝
 """
 print(banner)
-print("🔗 Follow us on Twitter: https://x.com/0x_renan")
-print("Hey, welcome to the bot! I'm just here to vibe, follow me on Twitter if you want!")
+print("🔗 Curtiu o Bot? Me siga lá no  Twitter: https://x.com/0x_renan")
 
 # Função para logar mensagens no arquivo de log
 def log_message(message: str) -> None:
@@ -109,8 +109,8 @@ def generate_reply(user_message: str) -> str:
 
 def should_reply(user_message: str) -> bool:
     """Decide se o bot deve responder com base no conteúdo da mensagem"""
-    # O bot só responde 15% das vezes
-    return random.random() < 0.15  # 15% de chance de responder
+    # O bot agora responde 60% das vezes
+    return random.random() < 0.60  # 60% de chance de responder
 
 def send_message(channel_id: str, message_text: str, reply_to: Optional[str] = None) -> None:
     """Função para enviar mensagem ao Discord de forma simplificada"""
