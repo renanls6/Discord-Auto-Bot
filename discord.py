@@ -1,12 +1,11 @@
-import json
-import time
 import os
+import time
 import requests
+import random
 import logging
 from dotenv import load_dotenv
 from typing import Optional
-import random
-from backoff import on_exception, expo
+from datetime import datetime
 
 # Configuração de logging
 logging.basicConfig(filename="bot.log", level=logging.INFO, format="%(asctime)s - %(message)s")
@@ -23,10 +22,8 @@ if not discord_token or not google_api_key:
     exit(1)
 
 # Configurações de reintento e tempos de espera
-RETRY_LIMIT = 3
-RETRY_DELAY = 5  # segundos entre tentativas
-READ_DELAY = int(os.getenv('READ_DELAY', 5))  # Tempo entre leituras de mensagens (em segundos)
-REPLY_DELAY = int(os.getenv('REPLY_DELAY', 3))  # Tempo entre respostas (em segundos)
+READ_DELAY = 5  # segundos entre leituras de mensagens
+REPLY_DELAY = 3  # segundos entre respostas
 
 last_message_id: Optional[str] = None
 bot_user_id: Optional[str] = None
@@ -43,7 +40,11 @@ def log_message(message: str) -> None:
     """Função para logar mensagens em português no arquivo de log"""
     logging.info(message)
 
-@on_exception(expo, requests.exceptions.RequestException, max_tries=5)
+def should_reply(user_message: str) -> bool:
+    """Decide se o bot deve responder com base no conteúdo da mensagem"""
+    # 85% de chance de não responder
+    return random.random() < 0.15  # 15% chance de responder
+
 def safe_request(func, *args, **kwargs):
     """Função auxiliar para fazer requisições de forma segura, com backoff exponencial"""
     try:
@@ -55,7 +56,7 @@ def safe_request(func, *args, **kwargs):
         log_message(f"⚠️ Erro na requisição: {e}. Abortando após falha.")
         raise  # Aborta após falha
 
-def generate_reply(user_message: str, language: str = "en") -> str:
+def generate_reply(user_message: str) -> str:
     """Gera uma resposta curta e amigável usando a API do Google Gemini AI"""
     global last_ai_response
 
@@ -87,33 +88,6 @@ def generate_reply(user_message: str, language: str = "en") -> str:
         log_message(f"⚠️ Erro ao processar a resposta: {e}")
         return "Something went wrong. Try again later."
 
-def should_reply(user_message: str) -> bool:
-    """Decide se o bot deve responder com base no conteúdo da mensagem"""
-    # Se a mensagem for muito curta ou irrelevante, o bot não responde
-    if len(user_message.split()) < 3:
-        return False
-    
-    # Se a mensagem contiver uma pergunta, o bot responde
-    if '?' in user_message:
-        return True
-
-    # O bot só responde se achar necessário, aqui temos 15% de chance de decidir interagir
-    return random.random() < 0.15  # 15% de chance de responder
-
-def send_message(channel_id: str, message_text: str, reply_to: Optional[str] = None) -> None:
-    """Função para enviar mensagem ao Discord de forma simplificada"""
-    payload = {'content': message_text}
-    if reply_to:
-        payload['message_reference'] = {'message_id': reply_to}
-
-    try:
-        safe_request(requests.post, f"https://discord.com/api/v9/channels/{channel_id}/messages", 
-                     json=payload, headers={'Authorization': discord_token, 'Content-Type': 'application/json'})
-        log_message(f"✅ Mensagem enviada: {message_text}")
-        print(f"✅ Mensagem enviada: {message_text}")  # Exibe no console a resposta enviada
-    except Exception as e:
-        log_message(f"⚠️ Falha ao enviar mensagem: {e}")
-
 def auto_reply(channels: list, read_delay: int = READ_DELAY, reply_delay: int = REPLY_DELAY) -> None:
     """Função para responder automaticamente às mensagens nos canais do Discord"""
     global last_message_id, bot_user_id
@@ -141,39 +115,48 @@ def auto_reply(channels: list, read_delay: int = READ_DELAY, reply_delay: int = 
                     author_id = most_recent_message.get('author', {}).get('id')
                     message_type = most_recent_message.get('type', '')
 
-                    # Apenas responder a mensagens que não são do bot
+                    # Apenas responder a mensagens que não são do bot e não são mensagens do tipo '8' (mensagens do sistema)
                     if (last_message_id is None or int(message_id) > int(last_message_id)) and author_id != bot_user_id and message_type != 8:
                         user_message = most_recent_message.get('content', '')
                         print(f"💬 Mensagem recebida: {user_message}")  # Exibe no console a mensagem recebida
                         log_message(f"💬 Mensagem recebida: {user_message}")
 
-                        # Decisão de responder ou não
-                        if should_reply(user_message):
+                        # Decisão de responder ou não (85% das vezes o bot não responde)
+                        if should_reply(user_message):  # 15% de chance de responder
                             response_text = generate_reply(user_message)
+                            print(f"⏳ Respondendo: {response_text}")  # Exibe no console a resposta gerada
+                            log_message(f"⏳ Respondendo: {response_text}")
+                            send_message(channel_id, response_text, reply_to=message_id)
                         else:
-                            response_text = "Nah, I'm just chillin' right now. Lemme know if you need something."
+                            # O bot não responde nada (apenas observa)
+                            print("👀 O bot está apenas observando...")  # Loga que o bot está observando sem responder
 
-                        print(f"⏳ Respondendo: {response_text}")  # Exibe no console a resposta gerada
-                        log_message(f"⏳ Respondendo: {response_text}")
-                        
-                        time.sleep(reply_delay)
-                        send_message(channel_id, response_text, reply_to=message_id)
-                        
                         last_message_id = message_id  # Atualiza o ID da última mensagem
 
             time.sleep(read_delay)  # Aguarda um tempo antes de verificar novas mensagens
 
-def main():
+def send_message(channel_id: str, message_text: str, reply_to: Optional[str] = None) -> None:
+    """Função para enviar mensagem ao Discord de forma simplificada"""
+    payload = {'content': message_text}
+    if reply_to:
+        payload['message_reference'] = {'message_id': reply_to}
+
+    try:
+        safe_request(requests.post, f"https://discord.com/api/v9/channels/{channel_id}/messages", 
+                     json=payload, headers={'Authorization': discord_token, 'Content-Type': 'application/json'})
+        log_message(f"✅ Mensagem enviada: {message_text}")
+        print(f"✅ Mensagem enviada: {message_text}")  # Exibe no console a resposta enviada
+    except Exception as e:
+        log_message(f"⚠️ Falha ao enviar mensagem: {e}")
+
+if __name__ == '__main__':
     channels = [
-        "channel_id_1",  # Substitua pelos IDs dos canais
-        "channel_id_2",  # Substitua pelos IDs dos canais
-        "channel_id_3",  # Substitua pelos IDs dos canais
-        "channel_id_4",  # Substitua pelos IDs dos canais
-        "channel_id_5",  # Substitua pelos IDs dos canais
+        os.getenv("DISCORD_CHANNEL_1"),
+        os.getenv("DISCORD_CHANNEL_2"),
+        os.getenv("DISCORD_CHANNEL_3"),
+        os.getenv("DISCORD_CHANNEL_4"),
+        os.getenv("DISCORD_CHANNEL_5"),
     ]
 
     # Inicia a função de resposta automática
     auto_reply(channels)
-
-if __name__ == '__main__':
-    main()
