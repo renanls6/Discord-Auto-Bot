@@ -33,8 +33,11 @@ last_message_id: Optional[str] = None
 bot_user_id: Optional[str] = None
 last_ai_response: Optional[str] = None  # Armazenar a última resposta da IA
 
-# Definindo uma variável para respostas curtas e informais
-short_and_informal = True  # Mude para False se quiser respostas mais formais
+# Lista de gírias informais em inglês
+slangs = [
+    "yo", "dude", "bro", "what's up", "lit", "chill", "no worries", "bet", 
+    "for real", "nah", "aight", "you know", "lol", "totally", "sick"
+]
 
 banner = """
  ██████╗ ██╗  ██╗    ██████╗ ███████╗███╗   ██╗ █████╗ ███╗   ██╗
@@ -67,10 +70,10 @@ def generate_reply(user_message: str, language: str = "en") -> str:
     """Gera uma resposta curta e amigável usando a API do Google Gemini AI"""
     global last_ai_response
 
-    ai_prompt = f"{user_message}\n\nRespond in a very casual, short, and natural way. Don't be formal or long-winded. Just give a simple, friendly reply."
+    ai_prompt = f"{user_message}\n\nRespond in a very casual, short, and natural way. Don't be formal, just keep it chill."
 
-    if short_and_informal:
-        ai_prompt += "\nKeep it super short, no need for any formality, just casual responses."
+    # Adicionando gírias e uma abordagem mais informal
+    ai_prompt += "\nUse slang like 'yo', 'dude', 'aight', 'nah', and keep it relaxed. No need for perfect grammar."
 
     url = f'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={google_api_key}'
     headers = {'Content-Type': 'application/json'}
@@ -83,17 +86,30 @@ def generate_reply(user_message: str, language: str = "en") -> str:
         response_text = ai_response['candidates'][0]['content']['parts'][0]['text']
         if not response_text.strip() or response_text == last_ai_response:
             log_message("⚠️ A resposta gerada é vazia ou igual à última. Tentando novamente.")
-            return "Sorry, I can't think of anything right now, but I'm here to help!"
+            return "Yo, I can't think of anything right now, but I'm here if you need something."
         
         last_ai_response = response_text.strip()
         return response_text.strip()
 
     except requests.exceptions.RequestException as e:
         log_message(f"⚠️ Erro ao gerar resposta da IA: {e}")
-        return "Sorry, I couldn't get a good response. Can I help with anything else?"
+        return "Sorry, I couldn't get a good reply, but I can help with something else."
     except Exception as e:
         log_message(f"⚠️ Erro ao processar a resposta: {e}")
-        return "Something went wrong. Please try again later."
+        return "Something went wrong. Try again later."
+
+def should_reply(user_message: str) -> bool:
+    """Decide se o bot deve responder com base no conteúdo da mensagem"""
+    # Se a mensagem for muito curta ou irrelevante, o bot não responde
+    if len(user_message.split()) < 3:
+        return False
+    
+    # Se a mensagem contiver uma pergunta, o bot responde
+    if '?' in user_message:
+        return True
+
+    # O bot só responde se achar necessário, aqui temos 30% de chance de decidir interagir
+    return random.choice([True, False])  # 30% de chance de responder
 
 def send_message(channel_id: str, message_text: str, reply_to: Optional[str] = None) -> None:
     """Função para enviar mensagem ao Discord de forma simplificada"""
@@ -109,8 +125,8 @@ def send_message(channel_id: str, message_text: str, reply_to: Optional[str] = N
     except Exception as e:
         log_message(f"⚠️ Falha ao enviar mensagem: {e}")
 
-def auto_reply(channel_id: str, read_delay: int = READ_DELAY, reply_delay: int = REPLY_DELAY) -> None:
-    """Função para responder automaticamente às mensagens no Discord, com verificação de duplicação"""
+def auto_reply(channels: list, read_delay: int = READ_DELAY, reply_delay: int = REPLY_DELAY) -> None:
+    """Função para responder automaticamente às mensagens nos canais do Discord"""
     global last_message_id, bot_user_id
 
     headers = {'Authorization': discord_token}
@@ -123,8 +139,9 @@ def auto_reply(channel_id: str, read_delay: int = READ_DELAY, reply_delay: int =
         return
 
     while True:
-        try:
-            print("⏳ Lendo novas mensagens...")
+        for channel_id in channels:
+            print(f"⏳ Lendo novas mensagens no canal {channel_id}...")
+
             response = safe_request(requests.get, f'https://discord.com/api/v9/channels/{channel_id}/messages', headers=headers)
 
             if response.status_code == 200:
@@ -141,33 +158,33 @@ def auto_reply(channel_id: str, read_delay: int = READ_DELAY, reply_delay: int =
                         print(f"💬 Mensagem recebida: {user_message}")  # Exibe no console a mensagem recebida
                         log_message(f"💬 Mensagem recebida: {user_message}")
 
-                        response_text = generate_reply(user_message)
+                        # Decisão de responder ou não
+                        if should_reply(user_message):
+                            response_text = generate_reply(user_message)
+                        else:
+                            response_text = "Nah, I'm just chillin' right now. Lemme know if you need something."
 
                         print(f"⏳ Respondendo: {response_text}")  # Exibe no console a resposta gerada
                         log_message(f"⏳ Respondendo: {response_text}")
                         
                         time.sleep(reply_delay)
                         send_message(channel_id, response_text, reply_to=message_id)
-                        last_message_id = message_id
+                        
+                        last_message_id = message_id  # Atualiza o ID da última mensagem
 
-            print(f"⏳ Esperando {read_delay} segundos antes de verificar novas mensagens...")
-            time.sleep(read_delay)
+            time.sleep(read_delay)  # Aguarda um tempo antes de verificar novas mensagens
 
-        except requests.exceptions.RequestException as e:
-            log_message(f"⚠️ Erro na requisição: {e}")
-            time.sleep(read_delay)
+def main():
+    channels = [
+        "channel_id_1",  # Substitua pelos IDs dos canais
+        "channel_id_2",  # Substitua pelos IDs dos canais
+        "channel_id_3",  # Substitua pelos IDs dos canais
+        "channel_id_4",  # Substitua pelos IDs dos canais
+        "channel_id_5",  # Substitua pelos IDs dos canais
+    ]
 
-if __name__ == "__main__":
-    print("Bem-vindo ao bot de auto-resposta do Discord!")
-    use_reply = input("Você deseja ativar a resposta automática? (s/n): ").lower() == 's'
-    
-    if use_reply:
-        print("\nConfigurações de Resposta Automática:")
-        channel_id = input("Digite o ID do canal (ex: 123456789012345678): ")
-        read_delay = int(input("Defina o intervalo de leitura (em segundos): "))
-        reply_delay = int(input("Defina o intervalo de resposta (em segundos): "))
+    # Inicia a função de resposta automática
+    auto_reply(channels)
 
-        log_message(f"✅ Modo de resposta automática ativado... Aguardando mensagens no canal {channel_id}")
-        auto_reply(channel_id, read_delay, reply_delay)
-    else:
-        log_message("❌ Modo de resposta automática desativado.")
+if __name__ == '__main__':
+    main()
